@@ -37,10 +37,10 @@ $(document).ready(function () {
                 if (response.status) {
                     showAlert(response.message, 'success');
                     // Display the execution time
-                    $('#executionTime').html('Execution time: ' + response.execution_time + ' seconds').fadeIn();
+                    $('#executionTime').html('Execution time: ' + response.execution_time).fadeIn();
                     setTimeout(function () {
                         $('#executionTime').fadeOut();
-                    }, 5000);
+                    }, 10000);
                 } else {
                     showAlert("Failed to upload file: " + response.message, 'danger');
                 }
@@ -84,6 +84,6 @@ $(document).ready(function () {
         $('#alertMessage').html('<div class="alert alert-' + type + '">' + message + '</div>').fadeIn();
         setTimeout(function () {
             $('#alertMessage').fadeOut();
-        }, 5000);
+        }, 10000);
     }
 });

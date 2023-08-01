@@ -1,5 +1,5 @@
 <?php
-ini_set('max_execution_time', 300); // Set maximum execution time to 300 seconds (5 minutes)
+ini_set('max_execution_time', 3600); // Set maximum execution time to 300 seconds (5 minutes)
 require_once 'database.php';
 
 class CSVProcessor
@@ -30,6 +30,9 @@ class CSVProcessor
                     try {
                         $br_id = $this->checkEmptyData($row[11], "Faculty") ? $this->insertFacultyData($row[11]) : NULL;
                         $fee_category_id = $this->checkEmptyData($br_id) && $this->checkEmptyData($row[10], "Fee Category") ? $this->insertFeeCategoryData($br_id, $row[10]) : NULL;
+                        $collection_id = $this->checkEmptyData($br_id) ? $this->insertFreeCollectionTypeData($br_id, $this->getFreeCollectionTypeNameData()) : NULL;
+
+//                        $collection_id = $this->checkEmptyData($collection_id) ? $this->insertFeeTypeData($fee_category_id, $fname, $collection_id, $br_id, 1, $fee_type_ledger, $freeHeadType);
 
                     } catch (Exception $e) {
                         if ($this->db->inTransaction()) {
@@ -66,7 +69,7 @@ class CSVProcessor
         $endTime = microtime(true); // get end time
         $executionTime = ($endTime - $startTime); // calculate execution time
 
-        $output['execution_time'] = $executionTime;
+        $output['execution_time'] = $this->formatExecutionTime($executionTime);
 
         return $output;
     }
@@ -78,6 +81,18 @@ class CSVProcessor
             return (!empty($rowData) && $rowData !== $column_name);
         }
         return !empty($rowData);
+    }
+
+    public function getFreeCollectionTypeNameData()
+    {
+        return [['collectionhead' => 'Academic', 'collectiondesc' => 'Description for Academic'], ['collectionhead' => 'Academic Misc', 'collectiondesc' => 'Description for Academic Misc'], ['collectionhead' => 'Hostel', 'collectiondesc' => 'Description for Hostel'], ['collectionhead' => 'Hostel Misc', 'collectiondesc' => 'Description for Hostel Misc'], ['collectionhead' => 'Transport', 'collectiondesc' => 'Description for Transport'], ['collectionhead' => 'Transport Misc', 'collectiondesc' => 'Description for Transport Misc']];
+    }
+
+    public function formatExecutionTime($executionTimeInSeconds)
+    {
+        $minutes = floor($executionTimeInSeconds / 60);
+        $seconds = $executionTimeInSeconds % 60;
+        return "{$minutes} minutes and {$seconds} seconds";
     }
 
     private function insertFacultyData($br_name)
@@ -101,7 +116,6 @@ class CSVProcessor
         return $this->db->lastInsertId();
     }
 
-
     private function insertFeeCategoryData($br_id, $freecategory)
     {
         // First, try to find an existing row with the same br_id and freecategory
@@ -123,6 +137,67 @@ class CSVProcessor
         $stmt->execute([':br_id' => $br_id, ':freecategory' => $freecategory]);
 
         // Return the fee_category_id of the row we just inserted
+        return $this->db->lastInsertId();
+    }
+
+    private function insertFreeCollectionTypeData($br_id, $freeCollectionTableData)
+    {
+        // Transform our data array to work with IN clause and PDO
+        $collectionHeads = array_column($freeCollectionTableData, 'collectionhead');
+        $placeholders = str_repeat('?,', count($collectionHeads) - 1) . '?';
+
+        // Prepare the statement for selecting existing entries
+        $stmt = $this->db->prepare("SELECT collectionhead FROM freecollectiontype WHERE br_id = ? AND collectionhead IN ($placeholders)");
+        $stmt->execute(array_merge([$br_id], $collectionHeads));
+        $existingEntries = $stmt->fetchAll(PDO::FETCH_COLUMN);
+
+        // Filter the data to include only the new entries
+        $newEntries = array_filter($freeCollectionTableData, function ($entry) use ($existingEntries) {
+            return !in_array($entry['collectionhead'], $existingEntries);
+        });
+
+        // Check if we have any new entries
+        if (!empty($newEntries)) {
+            // Create a batch insert query
+            $query = "INSERT INTO freecollectiontype (br_id, collectionhead, collectiondesc) VALUES ";
+            $values = [];
+            foreach ($newEntries as $entry) {
+                $query .= "(?, ?, ?),";
+                array_push($values, $br_id, $entry['collectionhead'], $entry['collectiondesc']);
+            }
+
+            // Remove the trailing comma
+            $query = substr($query, 0, -1);
+
+            // Prepare and execute the statement
+            $stmt = $this->db->prepare($query);
+            $stmt->execute($values);
+
+            return $this->db->lastInsertId();
+        }
+    }
+
+    private function insertFeeTypeData($fee_category, $fname, $collection_id, $br_id, $seq_id, $fee_type_ledger, $freeHeadType)
+    {
+        // Prepare the statement for selecting existing entries
+        $stmt = $this->db->prepare("SELECT id FROM fee_types WHERE fee_category = :fee_category AND fname = :fname AND collection_id = :collection_id AND br_id = :br_id AND seq_id = :seq_id AND fee_type_ledger = :fee_type_ledger AND freeHeadType = :freeHeadType");
+        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':seq_id' => $seq_id, ':fee_type_ledger' => $fee_type_ledger, ':freeHeadType' => $freeHeadType]);
+
+        // Fetch the result
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($result) {
+            // If we found a row, return its id
+            return $result['id'];
+        }
+
+        // If we didn't find a row, insert a new one
+        $stmt = $this->db->prepare("
+        INSERT INTO fee_types (fee_category, fname, collection_id, br_id, seq_id, fee_type_ledger, freeHeadType)
+        VALUES (:fee_category, :fname, :collection_id, :br_id, :seq_id, :fee_type_ledger, :freeHeadType)
+    ");
+        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':seq_id' => $seq_id, ':fee_type_ledger' => $fee_type_ledger, ':freeHeadType' => $freeHeadType]);
+
+        // Return the id of the row we just inserted
         return $this->db->lastInsertId();
     }
 
