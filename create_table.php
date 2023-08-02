@@ -48,13 +48,12 @@ try {
     -- Table: fee_types
     CREATE TABLE fee_types (
         id INT PRIMARY KEY AUTO_INCREMENT,
-        fee_category INT,
+        fee_category INT NULL,
         fname VARCHAR(255),
         collection_id INT,
         br_id INT,
-        seq_id INT,
         fee_type_ledger VARCHAR(255),
-        freeHeadType INT,
+        freeHeadType INT NULL,
         FOREIGN KEY (fee_category) REFERENCES fee_category(id),
         FOREIGN KEY (collection_id) REFERENCES freecollectiontype(id),
         FOREIGN KEY (br_id) REFERENCES branches(br_id),

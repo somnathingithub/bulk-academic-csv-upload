@@ -32,7 +32,7 @@ class CSVProcessor
                         $fee_category_id = $this->checkEmptyData($br_id) && $this->checkEmptyData($row[10], "Fee Category") ? $this->insertFeeCategoryData($br_id, $row[10]) : NULL;
                         $collection_id = $this->checkEmptyData($br_id) ? $this->insertFreeCollectionTypeData($br_id, $this->getFreeCollectionTypeNameData()) : NULL;
 
-//                        $collection_id = $this->checkEmptyData($collection_id) ? $this->insertFeeTypeData($fee_category_id, $fname, $collection_id, $br_id, 1, $fee_type_ledger, $freeHeadType);
+                        $free_type_id = $this->checkEmptyData($collection_id) && $this->checkEmptyData($row[16], "Fee Head") ? $this->insertFeeTypeData($fee_category_id, $row[16], $collection_id, $br_id, $this->getModuleId($row[16])) : NULL;
 
                     } catch (Exception $e) {
                         if ($this->db->inTransaction()) {
@@ -81,18 +81,6 @@ class CSVProcessor
             return (!empty($rowData) && $rowData !== $column_name);
         }
         return !empty($rowData);
-    }
-
-    public function getFreeCollectionTypeNameData()
-    {
-        return [['collectionhead' => 'Academic', 'collectiondesc' => 'Description for Academic'], ['collectionhead' => 'Academic Misc', 'collectiondesc' => 'Description for Academic Misc'], ['collectionhead' => 'Hostel', 'collectiondesc' => 'Description for Hostel'], ['collectionhead' => 'Hostel Misc', 'collectiondesc' => 'Description for Hostel Misc'], ['collectionhead' => 'Transport', 'collectiondesc' => 'Description for Transport'], ['collectionhead' => 'Transport Misc', 'collectiondesc' => 'Description for Transport Misc']];
-    }
-
-    public function formatExecutionTime($executionTimeInSeconds)
-    {
-        $minutes = floor($executionTimeInSeconds / 60);
-        $seconds = $executionTimeInSeconds % 60;
-        return "{$minutes} minutes and {$seconds} seconds";
     }
 
     private function insertFacultyData($br_name)
@@ -177,11 +165,31 @@ class CSVProcessor
         }
     }
 
-    private function insertFeeTypeData($fee_category, $fname, $collection_id, $br_id, $seq_id, $fee_type_ledger, $freeHeadType)
+    public function getFreeCollectionTypeNameData()
+    {
+        return [['collectionhead' => 'Academic', 'collectiondesc' => 'Description for Academic'], ['collectionhead' => 'Academic Misc', 'collectiondesc' => 'Description for Academic Misc'], ['collectionhead' => 'Hostel', 'collectiondesc' => 'Description for Hostel'], ['collectionhead' => 'Hostel Misc', 'collectiondesc' => 'Description for Hostel Misc'], ['collectionhead' => 'Transport', 'collectiondesc' => 'Description for Transport'], ['collectionhead' => 'Transport Misc', 'collectiondesc' => 'Description for Transport Misc']];
+    }
+
+    public function getModuleId($free_head){
+        switch (trim($free_head)) {
+            case 'Fine Fee':
+                return 2;
+                break;
+            case 'Hostel & Mess Fee':
+                return 3;
+                break;
+            default:
+                return 1;
+                break;
+        }
+
+    }
+
+    private function insertFeeTypeData($fee_category, $fname, $collection_id, $br_id, $freeHeadType)
     {
         // Prepare the statement for selecting existing entries
-        $stmt = $this->db->prepare("SELECT id FROM fee_types WHERE fee_category = :fee_category AND fname = :fname AND collection_id = :collection_id AND br_id = :br_id AND seq_id = :seq_id AND fee_type_ledger = :fee_type_ledger AND freeHeadType = :freeHeadType");
-        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':seq_id' => $seq_id, ':fee_type_ledger' => $fee_type_ledger, ':freeHeadType' => $freeHeadType]);
+        $stmt = $this->db->prepare("SELECT id FROM fee_types WHERE fee_category = :fee_category AND fname = :fname AND collection_id = :collection_id AND br_id = :br_id AND fee_type_ledger = :fee_type_ledger AND freeHeadType = :freeHeadType");
+        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':fee_type_ledger' => $fname, ':freeHeadType' => $freeHeadType]);
 
         // Fetch the result
         $result = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -192,10 +200,46 @@ class CSVProcessor
 
         // If we didn't find a row, insert a new one
         $stmt = $this->db->prepare("
-        INSERT INTO fee_types (fee_category, fname, collection_id, br_id, seq_id, fee_type_ledger, freeHeadType)
-        VALUES (:fee_category, :fname, :collection_id, :br_id, :seq_id, :fee_type_ledger, :freeHeadType)
-    ");
-        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':seq_id' => $seq_id, ':fee_type_ledger' => $fee_type_ledger, ':freeHeadType' => $freeHeadType]);
+    INSERT INTO fee_types (fee_category, fname, collection_id, br_id, fee_type_ledger, freeHeadType)
+    VALUES (:fee_category, :fname, :collection_id, :br_id, :fee_type_ledger, :freeHeadType)
+");
+        $stmt->execute([':fee_category' => $fee_category, ':fname' => $fname, ':collection_id' => $collection_id, ':br_id' => $br_id, ':fee_type_ledger' => $fname, ':freeHeadType' => $freeHeadType]);
+
+        // Return the id of the row we just inserted
+        return $this->db->lastInsertId();
+    }
+
+    public function formatExecutionTime($executionTimeInSeconds)
+    {
+        $minutes = floor($executionTimeInSeconds / 60);
+        $seconds = $executionTimeInSeconds % 60;
+        return "{$minutes} minutes and {$seconds} seconds";
+    }
+
+    private function insertFinancialTransData($module_id, $adm_no, $amount, $crdr, $tran_date, $acad_year, $entry_mode, $voucher_no, $br_id, $type_of_consession = NULL)
+    {
+        // Check if type_of_consession is empty and set it to NULL
+        if(empty($type_of_consession)){
+            $type_of_consession = NULL;
+        }
+
+        // Prepare the statement for selecting existing entries
+        $stmt = $this->db->prepare("SELECT id FROM financial_trans WHERE module_id = :module_id AND adm_no = :adm_no AND amount = :amount AND crdr = :crdr AND tran_date = :tran_date AND acad_year = :acad_year AND entry_mode = :entry_mode AND voucher_no = :voucher_no AND br_id = :br_id AND type_of_consession = :type_of_consession");
+        $stmt->execute([':module_id' => $module_id, ':adm_no' => $adm_no, ':amount' => $amount, ':crdr' => $crdr, ':tran_date' => $tran_date, ':acad_year' => $acad_year, ':entry_mode' => $entry_mode, ':voucher_no' => $voucher_no, ':br_id' => $br_id, ':type_of_consession' => $type_of_consession]);
+
+        // Fetch the result
+        $result = $stmt->fetch(PDO::FETCH_ASSOC);
+        if ($result) {
+            // If we found a row, return its id
+            return $result['id'];
+        }
+
+        // If we didn't find a row, insert a new one
+        $stmt = $this->db->prepare("
+    INSERT INTO financial_trans (module_id, adm_no, amount, crdr, tran_date, acad_year, entry_mode, voucher_no, br_id, type_of_consession)
+    VALUES (:module_id, :adm_no, :amount, :crdr, :tran_date, :acad_year, :entry_mode, :voucher_no, :br_id, :type_of_consession)
+");
+        $stmt->execute([':module_id' => $module_id, ':adm_no' => $adm_no, ':amount' => $amount, ':crdr' => $crdr, ':tran_date' => $tran_date, ':acad_year' => $acad_year, ':entry_mode' => $entry_mode, ':voucher_no' => $voucher_no, ':br_id' => $br_id, ':type_of_consession' => $type_of_consession]);
 
         // Return the id of the row we just inserted
         return $this->db->lastInsertId();
