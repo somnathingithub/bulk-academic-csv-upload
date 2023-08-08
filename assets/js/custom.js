@@ -26,13 +26,6 @@ $(document).ready(function () {
             data: formData,
             processData: false,
             contentType: false,
-            xhr: function () {
-                var myXhr = $.ajaxSettings.xhr();
-                if (myXhr.upload) {
-                    myXhr.upload.addEventListener('progress', progressHandlingFunction, false);
-                }
-                return myXhr;
-            },
             success: function (response) {
                 if (response.status) {
                     showAlert(response.message, 'success');
@@ -44,7 +37,6 @@ $(document).ready(function () {
                 } else {
                     showAlert("Failed to upload file: " + response.message, 'danger');
                 }
-                $('.progress').hide();
 
                 // Hide the overlay after the upload is complete
                 $('.overlay').hide();
@@ -55,7 +47,6 @@ $(document).ready(function () {
                     errorMessage = jqXHR.responseJSON.message;
                 }
                 showAlert(errorMessage, 'danger');
-                $('.progress').hide();
 
                 // Hide the overlay on error as well
                 $('.overlay').hide();
@@ -64,21 +55,6 @@ $(document).ready(function () {
     });
 
     // Rest of your code for progress handling, showAlert, etc...
-
-    function progressHandlingFunction(e) {
-        if (e.lengthComputable) {
-            var max = e.total;
-            var current = e.loaded;
-
-            var percentage = Math.round((current * 100) / max);
-            $('.bar').width(percentage + '%');
-            $('.percent').html(percentage + '%');
-
-            if (percentage >= 100) {
-                // process completed
-            }
-        }
-    }
 
     function showAlert(message, type) {
         $('#alertMessage').html('<div class="alert alert-' + type + '">' + message + '</div>').fadeIn();
